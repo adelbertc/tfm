@@ -21,6 +21,8 @@ object TfmMacro {
       }.head
 
     def generate(algebra: ClassDef, algebraCompanion: Option[ModuleDef]): c.Expr[Any] = {
+      val tparam = algebra.tparams.head
+
       val suffix = "Algebra"
 
       val decodedName = algebra.name.decoded
@@ -35,7 +37,7 @@ object TfmMacro {
       val algebras =
         algebra.impl.body.collect {
           // Public methods
-          case q"def $name[..$tparams](...$vparamss): $outer[$inner]" =>
+          case q"def $name[..$tparams](...$vparamss): $outer[$inner]" if outer == tparam =>
             val valNames = vparamss.map(_.map { case ValDef(_, name, _, _) => name })
 
             q"""
@@ -47,7 +49,7 @@ object TfmMacro {
             """
 
           // Public values
-          case q"val $name: $outer[$inner]" =>
+          case q"val $name: $outer[$inner]" if outer == tparam =>
             q"""
             val $name: $typeName[$inner] =
               new ${typeName}[$inner] {
