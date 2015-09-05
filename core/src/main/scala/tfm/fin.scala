@@ -29,7 +29,7 @@ object TfmMacro {
         case q"new fin[$interpreter]" => interpreter
       }.head
 
-    def generate(algebra: ClassDef): c.Expr[Any] = {
+    def generate(algebra: ClassDef, algebraModule: Option[ModuleDef]): c.Expr[Any] = {
       val effect = algebra.tparams.head
 
       val algebraName = algebra.name
@@ -68,6 +68,33 @@ object TfmMacro {
             """
         }
 
+      val generatedAlgebra =
+        q"""
+        trait ${algebraType}[A] {
+          def run[F[_]](interpreter: ${interpreterType}[F]): F[A]
+        }
+
+        object ${algebraTerm} {
+          ..${algebras}
+        }
+        """
+
+      val algebraObject =
+        algebraModule match {
+          case Some(q"${mods} object ${name} extends { ..${earlydefs} } with ..${parents} { ${self} => ..${members} }") =>
+            q"""${mods} object ${name} extends { ..${earlydefs} } with ..${parents} { ${self} =>
+              ..${members}
+              ..${generatedAlgebra}
+            }
+            """
+          case _ =>
+            q"""
+            object ${algebraName.toTermName} {
+              ..${generatedAlgebra}
+            }
+            """
+        }
+
       verbose {
 s"""
 Algebras:
@@ -81,23 +108,15 @@ ${algebra.impl.body.mkString("\n\n")}
       }
 
       c.Expr(q"""
-      $algebra
+      ${algebra}
 
-      object ${algebraName.toTermName} {
-        trait ${algebraType}[A] {
-          def run[F[_]](interpreter: ${interpreterType}[F]): F[A]
-        }
-
-        object ${algebraTerm} {
-          ..${algebras}
-        }
-      }
+      ${algebraObject}
       """)
     }
 
     annottees.map(_.tree) match {
-      case (algebra: ClassDef) :: Nil if wellFormed(algebra) => generate(algebra)
-      case (algebra: ClassDef) :: (_: ModuleDef) :: Nil if wellFormed(algebra) => generate(algebra)
+      case (algebra: ClassDef) :: Nil if wellFormed(algebra) => generate(algebra, None)
+      case (algebra: ClassDef) :: (algebraModule: ModuleDef) :: Nil if wellFormed(algebra) => generate(algebra, Some(algebraModule))
       case _ => c.abort(c.enclosingPosition, "@tfm can only be applied to traits that parameterized with a type constructor")
     }
   }

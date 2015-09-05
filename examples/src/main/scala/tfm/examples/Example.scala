@@ -8,6 +8,10 @@ trait ExampleAlgebra[F[_]] {
   def add(lhs: Int, rhs: Int): F[Int]
 }
 
+object ExampleAlgebra {
+  def foo: Int = 42
+}
+
 trait ExampleInterpreter[F[_]] extends ExampleAlgebra[F]
 
 object ExampleInterpreter {
@@ -25,4 +29,5 @@ object ExampleApp extends App {
 
   val program = add(3, 4)
   println(program.run(ExampleInterpreter.id))
+  println(ExampleAlgebra.foo)
 }
