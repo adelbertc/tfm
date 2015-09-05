@@ -3,6 +3,8 @@ package tfm
 import scala.annotation.StaticAnnotation
 import scala.reflect.macros.Context
 
+class local extends StaticAnnotation
+
 class fin extends StaticAnnotation {
   def macroTransform(annottees: Any*): Any = macro TfmMacro.generateAlgebra
 }
@@ -13,16 +15,31 @@ object TfmMacro {
   def generateAlgebra(c: Context)(annottees: c.Expr[Any]*): c.Expr[Any] = {
     import c.universe._
 
+    def filterMods(mods: Modifiers): Boolean =
+      isPublic(mods) && notOmitted(mods)
+
+    def isPublic(mods: Modifiers): Boolean = {
+      val blacklist = List(Flag.PRIVATE, Flag.PROTECTED)
+      blacklist.forall(flag => !mods.hasFlag(flag))
+    }
+
+    def notOmitted(mods: Modifiers): Boolean =
+      mods.annotations.forall {
+        case q"new local()" => false
+        case q"new tfm.local()" => false
+        case _ => true
+      }
+
+    // Compare names of type constructors
+    def sameTypeConstructorName(classTparam: Ident, innerTparam: TypeDef): Boolean =
+      classTparam.name.decoded == innerTparam.name.decoded
+
     def verbose(s: => String): Unit =
       if (sys.props.get("tfm.verbose").isDefined) c.info(c.enclosingPosition, s, false)
 
     // Check that `typeCtor` is paramterized by a unary type constructor
     def wellFormed(typeCtor: ClassDef): Boolean =
       typeCtor.tparams.headOption.filter(_.tparams.size == 1).nonEmpty
-
-    // Compare names of type constructors
-    def sameTypeConstructorName(classTparam: Ident, innerTparam: TypeDef): Boolean =
-      classTparam.name.decoded == innerTparam.name.decoded
 
     def generate(algebra: ClassDef, algebraModule: Option[ModuleDef]): c.Expr[Any] = {
       val interpreterType =
@@ -47,8 +64,8 @@ object TfmMacro {
 
       val algebras =
         algebra.impl.body.collect {
-          // Public defs
-          case q"def ${tname}[..${tparams}](...${paramss}): ${outer}[${inner}]" if sameTypeConstructorName(outer.asInstanceOf[Ident], effect) =>
+          // Method
+          case q"${mods} def ${tname}[..${tparams}](...${paramss}): ${outer}[${inner}]" if filterMods(mods) && sameTypeConstructorName(outer.asInstanceOf[Ident], effect) =>
             val valNames = paramss.map(_.map { case ValDef(_, name, _, _) => name })
 
             q"""
@@ -59,8 +76,8 @@ object TfmMacro {
               }
             """
 
-          // Public vals
-          case q"val ${tname}: ${outer}[${inner}]" if sameTypeConstructorName(outer.asInstanceOf[Ident], effect) =>
+          // Val
+          case q"${mods} val ${tname}: ${outer}[${inner}]" if filterMods(mods) && sameTypeConstructorName(outer.asInstanceOf[Ident], effect) =>
             q"""
             val ${tname}: ${algebraType}[${inner}] =
               new ${algebraType}[${inner}] {
