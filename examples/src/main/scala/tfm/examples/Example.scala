@@ -2,17 +2,11 @@ package tfm.examples
 
 import tfm.fin
 
-@fin[ExampleInterpreter]
-trait ExampleAlgebra[F[_]] {
+@fin
+trait ExampleInterpreter[F[_]] {
   def lit(n: Int): F[Int]
   def add(lhs: Int, rhs: Int): F[Int]
 }
-
-object ExampleAlgebra {
-  def foo: Int = 42
-}
-
-trait ExampleInterpreter[F[_]] extends ExampleAlgebra[F]
 
 object ExampleInterpreter {
   type Id[A] = A
@@ -25,9 +19,8 @@ object ExampleInterpreter {
 }
 
 object ExampleApp extends App {
-  import ExampleAlgebra.language._
+  import ExampleInterpreter.language._
 
   val program = add(3, 4)
   println(program.run(ExampleInterpreter.id))
-  println(ExampleAlgebra.foo)
 }

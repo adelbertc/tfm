@@ -3,12 +3,12 @@ package tfm
 import scala.annotation.StaticAnnotation
 import scala.reflect.macros.Context
 
-class fin[Interpreter[_[_]]] extends StaticAnnotation {
+class fin extends StaticAnnotation {
   def macroTransform(annottees: Any*): Any = macro TfmMacro.generateAlgebra
 }
 
 object TfmMacro {
-  private val SUFFIX = "Algebra"
+  private val SUFFIX = "Interpreter"
 
   def generateAlgebra(c: Context)(annottees: c.Expr[Any]*): c.Expr[Any] = {
     import c.universe._
@@ -24,12 +24,14 @@ object TfmMacro {
     def sameTypeConstructorName(classTparam: Ident, innerTparam: TypeDef): Boolean =
       classTparam.name.decoded == innerTparam.name.decoded
 
-    val interpreterType =
-      c.prefix.tree.collect {
-        case q"new fin[$interpreter]" => interpreter
-      }.head
-
     def generate(algebra: ClassDef, algebraModule: Option[ModuleDef]): c.Expr[Any] = {
+      val interpreterType =
+        algebra match {
+          case q"${mods} trait ${tpname}[..${tparams}] extends { ..${earlydefns} } with ..${parents} { ${self} => ..${stats} }" =>
+            tpname
+          case _ => c.abort(c.enclosingPosition, "Interpreter must be a trait")
+        }
+
       val effect = algebra.tparams.head
 
       val algebraName = algebra.name
@@ -46,24 +48,24 @@ object TfmMacro {
       val algebras =
         algebra.impl.body.collect {
           // Public defs
-          case q"def ${name}[..${tparams}](...${vparamss}): ${outer}[${inner}]" if sameTypeConstructorName(outer.asInstanceOf[Ident], effect) =>
-            val valNames = vparamss.map(_.map { case ValDef(_, name, _, _) => name })
+          case q"def ${tname}[..${tparams}](...${paramss}): ${outer}[${inner}]" if sameTypeConstructorName(outer.asInstanceOf[Ident], effect) =>
+            val valNames = paramss.map(_.map { case ValDef(_, name, _, _) => name })
 
             q"""
-            def ${name}[..${tparams}](...${vparamss}): ${algebraType}[${inner}] =
+            def ${tname}[..${tparams}](...${paramss}): ${algebraType}[${inner}] =
               new ${algebraType}[${inner}] {
                 final def run[F[_]](interpreter: ${interpreterType}[F]): F[${inner}] =
-                  interpreter.${name}[..${tparams}](...${valNames})
+                  interpreter.${tname}[..${tparams}](...${valNames})
               }
             """
 
           // Public vals
-          case q"val ${name}: ${outer}[${inner}]" if sameTypeConstructorName(outer.asInstanceOf[Ident], effect) =>
+          case q"val ${tname}: ${outer}[${inner}]" if sameTypeConstructorName(outer.asInstanceOf[Ident], effect) =>
             q"""
-            val ${name}: ${algebraType}[${inner}] =
+            val ${tname}: ${algebraType}[${inner}] =
               new ${algebraType}[${inner}] {
                 final def run[F[_]](interpreter: ${interpreterType}[F]): F[${inner}] =
-                  interpreter.${name}
+                  interpreter.${tname}
               }
             """
         }
@@ -83,10 +85,10 @@ object TfmMacro {
 
       val algebraObject =
         algebraModule match {
-          case Some(q"${mods} object ${name} extends { ..${earlydefs} } with ..${parents} { ${self} => ..${members} }") =>
-            q"""${mods} object ${name} extends { ..${earlydefs} } with ..${parents} { ${self} =>
+          case Some(q"${mods} object ${tname} extends { ..${earlydefns} } with ..${parents} { ${self} => ..${body} }") =>
+            q"""${mods} object ${tname} extends { ..${earlydefns} } with ..${parents} { ${self} =>
               ..${generatedAlgebra}
-              ..${members}
+              ..${body}
             }
             """
           case _ =>
