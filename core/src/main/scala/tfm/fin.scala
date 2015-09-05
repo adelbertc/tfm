@@ -13,6 +13,9 @@ object TfmMacro {
   def generateAlgebra(c: Context)(annottees: c.Expr[Any]*): c.Expr[Any] = {
     import c.universe._
 
+    def verbose(s: => String): Unit =
+      if (sys.props.get("tfm.verbose").isDefined) c.info(c.enclosingPosition, s, false)
+
     // Check that `typeCtor` is paramterized by a unary type constructor
     def wellFormed(typeCtor: ClassDef): Boolean =
       typeCtor.tparams.headOption.filter(_.tparams.size == 1).nonEmpty
@@ -64,6 +67,18 @@ object TfmMacro {
               }
             """
         }
+
+      verbose {
+s"""
+Algebras:
+---------
+${algebras.mkString("\n\n")}
+
+All:
+----
+${algebra.impl.body.mkString("\n\n")}
+"""
+      }
 
       c.Expr(q"""
       $algebra

@@ -23,7 +23,8 @@ lazy val commonSettings = List(
     "-Ywarn-value-discard"
   ),
   libraryDependencies +=
-    compilerPlugin("org.scalamacros"  % ("paradise_" ++ scalaVersion.value) % scalamacrosVersion)
+    compilerPlugin("org.scalamacros"  % ("paradise_" ++ scalaVersion.value) % scalamacrosVersion),
+  initialize := { System.setProperty("tfm.verbose", "") }
 )
 
 lazy val tfmSettings = buildSettings ++ commonSettings
