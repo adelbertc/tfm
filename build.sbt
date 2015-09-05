@@ -43,7 +43,6 @@ lazy val core =
   settings(tfmSettings).
   settings(
     libraryDependencies ++= List(
-      compilerPlugin("org.scalamacros"  % ("paradise_" ++ scalaVersion.value) % scalamacrosVersion),
       "org.scalamacros" %% "quasiquotes"   % scalamacrosVersion,
       "org.scala-lang"  %  "scala-reflect" % scalaVersion.value
     )
