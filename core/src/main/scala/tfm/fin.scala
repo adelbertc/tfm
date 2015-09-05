@@ -5,7 +5,7 @@ import scala.reflect.macros.Context
 
 /** Annotation used to mark a field that should not be treated as part of the algebra.
  *
- *  This becomes useful when you have evaluator-specific methods.
+ *  This becomes useful when you have interpreter-specific methods.
  */
 class local extends StaticAnnotation
 
@@ -179,7 +179,7 @@ ${interpreter.impl.body.mkString("\n\n")}
       case (interpreter: ClassDef) :: (interpreterModule: ModuleDef) :: Nil if wellFormed(interpreter) =>
         generate(interpreter, Some(interpreterModule))
       case _ =>
-        c.abort(c.enclosingPosition, "@tfm can only be applied to traits parameterized with a unary type constructor")
+        c.abort(c.enclosingPosition, "Annotation can only be applied to traits parameterized with a unary type constructor")
     }
   }
 }
