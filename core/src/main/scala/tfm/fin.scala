@@ -56,7 +56,7 @@ object TfmMacro {
 
       val (algebraType, algebraTerm) = {
         val algebraName =
-          if (decodedName.endsWith(SUFFIX)) decodedName.dropRight(SUFFIX.size)
+          if (decodedName != SUFFIX && decodedName.endsWith(SUFFIX)) decodedName.dropRight(SUFFIX.size)
           else c.abort(c.enclosingPosition, "Annottee must end with 'Algebra'")
 
         (newTypeName(algebraName), newTermName(algebraName))
