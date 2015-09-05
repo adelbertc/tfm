@@ -25,7 +25,7 @@ object ExampleInterpreter {
 }
 
 object ExampleApp extends App {
-  import ExampleAlgebra.Example._
+  import ExampleAlgebra.language._
 
   val program = add(3, 4)
   println(program.run(ExampleInterpreter.id))

@@ -52,7 +52,7 @@ object TfmMacro {
             q"""
             def ${name}[..${tparams}](...${vparamss}): ${algebraType}[${inner}] =
               new ${algebraType}[${inner}] {
-                def run[F[_]](interpreter: ${interpreterType}[F]): F[${inner}] =
+                final def run[F[_]](interpreter: ${interpreterType}[F]): F[${inner}] =
                   interpreter.${name}[..${tparams}](...${valNames})
               }
             """
@@ -62,7 +62,7 @@ object TfmMacro {
             q"""
             val ${name}: ${algebraType}[${inner}] =
               new ${algebraType}[${inner}] {
-                def run[F[_]](interpreter: ${interpreterType}[F]): F[${inner}] =
+                final def run[F[_]](interpreter: ${interpreterType}[F]): F[${inner}] =
                   interpreter.${name}
               }
             """
@@ -74,17 +74,19 @@ object TfmMacro {
           def run[F[_]](interpreter: ${interpreterType}[F]): F[A]
         }
 
-        object ${algebraTerm} {
+        trait Language {
           ..${algebras}
         }
+
+        object language extends Language
         """
 
       val algebraObject =
         algebraModule match {
           case Some(q"${mods} object ${name} extends { ..${earlydefs} } with ..${parents} { ${self} => ..${members} }") =>
             q"""${mods} object ${name} extends { ..${earlydefs} } with ..${parents} { ${self} =>
-              ..${members}
               ..${generatedAlgebra}
+              ..${members}
             }
             """
           case _ =>
