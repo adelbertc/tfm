@@ -51,4 +51,5 @@ lazy val core =
 lazy val examples =
   project.in(file("examples")).
   settings(tfmSettings).
+  settings(libraryDependencies += "org.spire-math" %% "cats" % "0.2.0").
   dependsOn(core)
