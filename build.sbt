@@ -31,7 +31,7 @@ lazy val tfmSettings = buildSettings ++ commonSettings
 
 lazy val tfm =
   project.in(file(".")).
-  settings(tfmSettings ++ List(run <<= run.in(Compile).in(core))).
+  settings(tfmSettings).
   aggregate(core, examples)
 
 val scalamacrosVersion = "2.0.1"
