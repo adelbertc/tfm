@@ -12,19 +12,19 @@ class local extends StaticAnnotation
 /** Annotation used to mark a trait containing the algebra.
  *  The trait acts as the interpreter for the algebra.
  *
- *  The trait must be suffixed with "Interpreter" and parameterized by a unary type
- *  constructor - this type constructor represents the effect the interpreter needs
- *  during interpretation.
+ *  The trait must be given a name to use for the name of the generated algebra and be
+ *  parameterized by a unary type constructor - this type constructor represents the
+ *  effect the interpreter needs during interpretation.
  *
  *  The macro will inspect and filter the public fields of the trait and generate
  *  the appropriate algebra type and smart constructors accordingly. When the macro
  *  is invoked, the following is generated and placed in the companion object of
  *  the annottee:
  *
- *  - A trait named the same as the annotated trait but with the "Interpreter" suffix
- *    dropped. This trait is the user-facing type - it is the algebra that the interpreter
- *    will eventually interpret. The trait is parameterized by a (proper) type which
- *    denotes the type of the value the underlying expression interprets to.
+ *  - A trait with the name provided to the annotation. This trait is the user-facing
+ *    type - it is the algebra that the interpreter will eventually interpret. The trait
+ *    is parameterized by a (proper) type which denotes the type of the value the
+ *    underlying expression interprets to.
  *  - A trait named `Language` which contains the smart constructors for the algebra trait.
  *    The smart constructors live in a trait instead of an object to allow potential
  *    library authors to create an object that mixes in the smart constructors, along with
@@ -32,13 +32,11 @@ class local extends StaticAnnotation
  *  - An object called `language` which extends the generated `Language` trait. This makes
  *    the smart constructors easily available via importing `language._`.
  */
-class fin extends StaticAnnotation {
+class fin(algebraName: String) extends StaticAnnotation {
   def macroTransform(annottees: Any*): Any = macro TfmMacro.generateAlgebra
 }
 
 object TfmMacro {
-  private val SUFFIX = "Interpreter"
-
   def generateAlgebra(c: Context)(annottees: c.Expr[Any]*): c.Expr[Any] = {
     import c.universe._
 
@@ -68,6 +66,19 @@ object TfmMacro {
       clazz.tparams.headOption.filter(_.tparams.size == 1).nonEmpty
 
     def generate(interpreter: ClassDef, interpreterModule: Option[ModuleDef]): c.Expr[Any] = {
+      // Get first argument of annotation to use as name of algebra
+      val (algebraType, algebraTerm) =
+        c.prefix.tree match {
+          case Apply(_, args) =>
+            args.headOption match {
+              case Some(name) =>
+                val algebraString = c.eval(c.Expr[String](name))
+                if (algebraString.nonEmpty) (newTypeName(algebraString), newTermName(algebraString))
+                else c.abort(c.enclosingPosition, "Algebra name cannot be empty string")
+              case None => c.abort(c.enclosingPosition, "Annotation requires algebra name as argument")
+            }
+        }
+
       // Type parameter of annottee
       val effect = interpreter.tparams.head
 
@@ -85,17 +96,6 @@ object TfmMacro {
 
       val interpreterName = interpreter.name
       val decodedInterpreterName = interpreterName.decoded
-
-      // TypeName and TermName of the algebra
-      val (algebraType, algebraTerm) = {
-        val algebraName =
-          if (decodedInterpreterName != SUFFIX && decodedInterpreterName.endsWith(SUFFIX))
-            decodedInterpreterName.dropRight(SUFFIX.size)
-          else
-            c.abort(c.enclosingPosition, s"Annottee must end with '$SUFFIX'")
-
-        (newTypeName(algebraName), newTermName(algebraName))
-      }
 
       val algebras =
         interpreter.impl.body.collect {
