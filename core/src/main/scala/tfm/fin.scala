@@ -78,7 +78,9 @@ object TfmMacro {
         interpreter match {
           case q"${mods} trait ${tpname}[..${tparams}] extends { ..${earlydefns} } with ..${parents} { ${self} => ..${stats} }" =>
             tpname
-          case _ => c.abort(c.enclosingPosition, "Interpreter must be a trait")
+          case q"${mods} class ${tpname}[..${tparams}] ${ctorMods}(...${paramss}) extends { ..${earlydefns} } with ..${parents} { ${self} => ..${stats} }" =>
+            tpname
+          case _ => c.abort(c.enclosingPosition, "Interpreter must be a trait or class")
         }
 
       val interpreterName = interpreter.name
