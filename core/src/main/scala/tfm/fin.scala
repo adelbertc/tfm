@@ -73,16 +73,6 @@ object TfmMacro {
       def isInterpreterEffect(tctor: Ident): Boolean =
         tctor.name.decoded == effect.name.decoded
 
-      // Name of interpreter
-      val interpreterType =
-        interpreter match {
-          case q"${mods} trait ${tpname}[..${tparams}] extends { ..${earlydefns} } with ..${parents} { ${self} => ..${stats} }" =>
-            tpname
-          case q"${mods} class ${tpname}[..${tparams}] ${ctorMods}(...${paramss}) extends { ..${earlydefns} } with ..${parents} { ${self} => ..${stats} }" =>
-            tpname
-          case _ => c.abort(c.enclosingPosition, "Interpreter must be a trait or class")
-        }
-
       val interpreterName = interpreter.name
       val decodedInterpreterName = interpreterName.decoded
 
@@ -112,7 +102,7 @@ object TfmMacro {
             q"""
             def ${tname}[..${tparams}](...${paramss}): ${algebraType}[${inner}] =
               new ${algebraType}[${inner}] {
-                final def run[F[_]](interpreter: ${interpreterType}[F]): F[${inner}] =
+                final def run[F[_]](interpreter: ${interpreterName}[F]): F[${inner}] =
                   interpreter.${tname}[..${tparams}](...${valNames})
               }
             """
@@ -122,7 +112,7 @@ object TfmMacro {
             q"""
             val ${tname}: ${algebraType}[${inner}] =
               new ${algebraType}[${inner}] {
-                final def run[F[_]](interpreter: ${interpreterType}[F]): F[${inner}] =
+                final def run[F[_]](interpreter: ${interpreterName}[F]): F[${inner}] =
                   interpreter.${tname}
               }
             """
@@ -131,7 +121,7 @@ object TfmMacro {
       val generatedAlgebra =
         q"""
         trait ${algebraType}[A] {
-          def run[F[_]](interpreter: ${interpreterType}[F]): F[A]
+          def run[F[_]](interpreter: ${interpreterName}[F]): F[A]
         }
 
         trait Language {
