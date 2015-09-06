@@ -66,19 +66,6 @@ object TfmMacro {
       clazz.tparams.headOption.filter(_.tparams.size == 1).nonEmpty
 
     def generate(interpreter: ClassDef, interpreterModule: Option[ModuleDef]): c.Expr[Any] = {
-      // Get first argument of annotation to use as name of algebra
-      val (algebraType, algebraTerm) =
-        c.prefix.tree match {
-          case Apply(_, args) =>
-            args.headOption match {
-              case Some(name) =>
-                val algebraString = c.eval(c.Expr[String](name))
-                if (algebraString.nonEmpty) (newTypeName(algebraString), newTermName(algebraString))
-                else c.abort(c.enclosingPosition, "Algebra name cannot be empty string")
-              case None => c.abort(c.enclosingPosition, "Annotation requires algebra name as argument")
-            }
-        }
-
       // Type parameter of annottee
       val effect = interpreter.tparams.head
 
@@ -96,6 +83,23 @@ object TfmMacro {
 
       val interpreterName = interpreter.name
       val decodedInterpreterName = interpreterName.decoded
+
+      // Get first argument of annotation to use as name of algebra
+      val (algebraType, algebraTerm) =
+        c.prefix.tree match {
+          case Apply(_, args) =>
+            args.headOption match {
+              case Some(name) =>
+                val algebraString = c.eval(c.Expr[String](name))
+
+                if (algebraString == decodedInterpreterName)
+                  c.abort(c.enclosingPosition, s"Algebra name cannot be same as that of the interpreter: ${decodedInterpreterName}")
+                else if (algebraString.isEmpty)
+                  c.abort(c.enclosingPosition, "Algebra name cannot be empty string")
+                else (newTypeName(algebraString), newTermName(algebraString))
+              case None => c.abort(c.enclosingPosition, "Annotation requires algebra name as argument")
+            }
+        }
 
       val algebras =
         interpreter.impl.body.collect {
