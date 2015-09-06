@@ -9,14 +9,14 @@ import scala.reflect.macros.Context
  */
 class local extends StaticAnnotation
 
-/** Annotation used to mark a trait containing the algebra.
- *  The trait acts as the interpreter for the algebra.
+/** Annotation used to mark a trait or class containing the algebra. Annotation must be
+ *  given a name to use as the name of the generated algebra. The annottee should be the
+ *  interpreter for the algebra.
  *
- *  The trait must be given a name to use for the name of the generated algebra and be
- *  parameterized by a unary type constructor - this type constructor represents the
- *  effect the interpreter needs during interpretation.
+ *  The interpreter must be parameterized by a unary type constructor - this type
+ *  constructor represents the effect the interpreter needs during interpretation.
  *
- *  The macro will inspect and filter the public fields of the trait and generate
+ *  The macro will inspect and filter the public fields of the interpreter and generate
  *  the appropriate algebra type and smart constructors accordingly. When the macro
  *  is invoked, the following is generated and placed in the companion object of
  *  the annottee:
