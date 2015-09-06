@@ -92,7 +92,7 @@ object TfmMacro {
           if (decodedInterpreterName != SUFFIX && decodedInterpreterName.endsWith(SUFFIX))
             decodedInterpreterName.dropRight(SUFFIX.size)
           else
-            c.abort(c.enclosingPosition, "Annottee must end with 'Algebra'")
+            c.abort(c.enclosingPosition, s"Annottee must end with '$SUFFIX'")
 
         (newTypeName(algebraName), newTermName(algebraName))
       }
