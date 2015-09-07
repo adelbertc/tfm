@@ -2,8 +2,14 @@
 tfm is "tagless final macro" - the project is intended to eliminate the boilerplate
 associated with setting up an EDSL encoded in the finally tagless approach.
 
-## Documentation
+### Documentation
 Currently the documentation is all in the [Scaladoc](core/src/main/scala/tfm/fin.scala).
+
+### Limitations
+* For algebras with effectful parameters (e.g. have shape `F[_]`) the macro will replace
+  each occurence of `F` with the name of the algebra. However, if the `F[_]` appears as
+  part of a more complex type (e.g. `A => F[B]`), the macro cannot figure out how to make
+  the appropriate interpreter call and will fail.
 
 ### Reading
 * [Alternatives to GADTs in Scala](https://pchiusano.github.io/2014-05-20/scala-gadts.html)

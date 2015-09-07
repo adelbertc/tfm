@@ -68,10 +68,20 @@ object TfmMacro {
     def generate(interpreter: ClassDef, interpreterModule: Option[ModuleDef]): c.Expr[Any] = {
       // Type parameter of annottee
       val effect = interpreter.tparams.head
+      val effectName = effect.name
 
-      // Identifier has same name as the type parameter of the interpreter
-      def isInterpreterEffect(tctor: Ident): Boolean =
-        tctor.name.decoded == effect.name.decoded
+      // Type constructor is the same as the interpreter effect
+      def isInterpreterEffect(tree: Tree): Boolean = {
+        tree match {
+          case tq"${outer}[..${inner}]" =>
+            outer match {
+              case i: Ident if i.name == effectName => true
+              case s: Select if s.name == effectName => true
+              case _ => inner.exists(isInterpreterEffect)
+            }
+          case _ => false
+        }
+      }
 
       val interpreterName = interpreter.name
       val decodedInterpreterName = interpreterName.decoded
@@ -96,13 +106,19 @@ object TfmMacro {
       val algebras =
         interpreter.impl.body.collect {
           // Method
-          case q"${mods} def ${tname}[..${tparams}](...${paramss}): ${outer}[${inner}] = ${expr}" if filterMods(mods) && isInterpreterEffect(outer.asInstanceOf[Ident]) =>
+          case q"${mods} def ${tname}[..${tparams}](...${paramss}): ${outer}[${inner}] = ${expr}" if filterMods(mods) && isInterpreterEffect(outer) =>
             val newParamss =
               paramss.map(_.map {
-                case q"${mods} val ${tname}: ${outer}[${inner}] = ${expr}" if isInterpreterEffect(outer.asInstanceOf[Ident]) =>
-                  (q"${mods} val ${tname}: ${algebraType}[${inner}] = ${expr}", q"${tname}.run(interpreter)")
-                case v@q"${mods} val ${tname}: ${tpt} = ${expr}" =>
-                  (v, q"${tname}")
+                case v@q"${mods} val ${uname}: ${tpt} = ${expr}" =>
+                  tpt match {
+                    case tq"${outer}[..${inner}]" =>
+                      if (isInterpreterEffect(outer))
+                        (q"${mods} val ${uname}: ${algebraType}[..${inner}] = ${expr}", q"${uname}.run(interpreter)")
+                      else if (inner.forall(!isInterpreterEffect(_)))
+                        (v, q"${uname}")
+                      else
+                        c.abort(c.enclosingPosition, s"Algebra '${tname}' cannot have parameter with type containing effect '${effectName.decoded}'")
+                  }
               })
 
             val (args, valNames) = (newParamss.map(_.map(_._1)), newParamss.map(_.map(_._2)))
@@ -116,7 +132,7 @@ object TfmMacro {
             """
 
           // Val
-          case q"${mods} val ${tname}: ${outer}[${inner}] = ${expr}" if filterMods(mods) && isInterpreterEffect(outer.asInstanceOf[Ident]) =>
+          case q"${mods} val ${tname}: ${outer}[${inner}] = ${expr}" if filterMods(mods) && isInterpreterEffect(outer) =>
             q"""
             val ${tname}: ${algebraType}[${inner}] =
               new ${algebraType}[${inner}] {

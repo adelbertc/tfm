@@ -13,6 +13,9 @@ trait TerminalInterpreter[F[_]] {
   @local def F: FlatMap[F]
   def join[A](lhs: F[A], rhs: F[A]): F[A] = lhs
 
+  // Not valid algebra - `f` has type containing `F[_]`, namely `Function1[A, F[B]]`
+  // def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B] = ???
+
   val readLine: F[String]
   def writeLine(string: String): F[Unit]
 }
