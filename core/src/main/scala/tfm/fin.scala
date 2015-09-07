@@ -13,7 +13,7 @@ class local extends StaticAnnotation
  *  given a name to use as the name of the generated algebra. The annottee should be the
  *  interpreter for the algebra.
  *
- *  The interpreter must be parameterized by a unary type constructor - this type
+ *  The interpreter must be parameterized by a unary type constructor `F[_]` - this type
  *  constructor represents the effect the interpreter needs during interpretation.
  *
  *  The macro will inspect and filter the public fields of the interpreter and generate
@@ -23,14 +23,23 @@ class local extends StaticAnnotation
  *
  *  - A trait with the name provided to the annotation. This trait is the user-facing
  *    type - it is the algebra that the interpreter will eventually interpret. The trait
- *    is parameterized by a (proper) type which denotes the type of the value the
- *    underlying expression interprets to.
+ *    is parameterized by a (proper) type `A` which denotes the type of the value the
+ *    underlying expression interprets to. The trait contains a single method `run` on it
+ *    parameterized by a unary type constructor `G[_]`, and takes as input an instance of the
+ *    interpreter (the annottee) with type `<interpreter type>[G]`. The output of `run`
+ *    has type `G[A]`.
  *  - A trait named `Language` which contains the smart constructors for the algebra trait.
- *    The smart constructors live in a trait instead of an object to allow potential
- *    library authors to create an object that mixes in the smart constructors, along with
- *    any other thing they may want.
+ *    The smart constructors share the exact same names of the members of the algebra. The
+ *    smart constructors live in a trait instead of an object to allow potential library
+ *    authors to create an object that mixes in the smart constructors, along with any other
+ *    thing they may want.
  *  - An object called `language` which extends the generated `Language` trait. This makes
  *    the smart constructors easily available via importing `language._`.
+ *
+ *  The algebra itself has the following restrictions:
+ *  - The return type must be of the shape `F[A]`
+ *  - Each input parameter must either be of type with shape `F[A]` or be of type that does
+ *    not contain `F[A]`. For instance, `Int` and `[A]F[A]` are OK, but `A => F[B]` is not.
  */
 class fin(algebraName: String) extends StaticAnnotation {
   def macroTransform(annottees: Any*): Any = macro TfmMacro.generateAlgebra
@@ -107,17 +116,21 @@ object TfmMacro {
         interpreter.impl.body.collect {
           // Method
           case q"${mods} def ${tname}[..${tparams}](...${paramss}): ${outer}[${inner}] = ${expr}" if filterMods(mods) && isInterpreterEffect(outer) =>
+            // Process params - effectful params are processed differently from pure ones
             val newParamss =
               paramss.map(_.map {
                 case v@q"${mods} val ${uname}: ${tpt} = ${expr}" =>
                   tpt match {
-                    case tq"${outer}[..${inner}]" =>
+                    case t@tq"${outer}[..${inner}]" =>
+                      // Parameter has shape F[A], must interpret parameter before making appropriate interpreter call
                       if (isInterpreterEffect(outer))
                         (q"${mods} val ${uname}: ${algebraType}[..${inner}] = ${expr}", q"${uname}.run(interpreter)")
+                      // Parameter does not contain F[_], e.g. is A, List[String], Double => List[Char]
                       else if (inner.forall(!isInterpreterEffect(_)))
                         (v, q"${uname}")
+                      // F[_] appears in type of parameter, e.g. A => F[B]
                       else
-                        c.abort(c.enclosingPosition, s"Algebra '${tname}' cannot have parameter with type containing effect '${effectName.decoded}'")
+                        c.abort(c.enclosingPosition, s"Parameter `${tname}: ${t}` has type containing effect '${effectName.decoded}'")
                   }
               })
 
