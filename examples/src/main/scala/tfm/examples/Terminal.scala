@@ -11,6 +11,7 @@ import tfm.{fin, local}
 @fin("TerminalIO")
 trait TerminalInterpreter[F[_]] {
   @local def F: FlatMap[F]
+  def join[A](lhs: F[A], rhs: F[A]): F[A]
 
   val readLine: F[String]
   def writeLine(string: String): F[Unit]
@@ -20,6 +21,7 @@ object TerminalInterpreter {
   val io: TerminalInterpreter[IO] =
     new TerminalInterpreter[IO] {
       val F: FlatMap[IO] = FlatMap[IO]
+      def join[A](lhs: IO[A], rhs: IO[A]): IO[A] = lhs.flatMap(_ => rhs.map(identity))
       val readLine: IO[String] = IO { Console.readLine() }
       def writeLine(string: String): IO[Unit] = IO { println(string) }
     }
@@ -28,6 +30,7 @@ object TerminalInterpreter {
   val mock: TerminalInterpreter[MockState] =
     new TerminalInterpreter[MockState] {
       val F: FlatMap[MockState] = FlatMap[MockState]
+      def join[A](lhs: MockState[A], rhs: MockState[A]): MockState[A] = lhs.flatMap(_ => rhs.map(identity))
       val readLine: MockState[String] = State(Mock.read)
       def writeLine(string: String): MockState[Unit] = State.modify(Mock.write(string))
     }
@@ -63,6 +66,10 @@ object TerminalIOApp extends App {
   // Mock
   val init = Mock(in = List("Hello", "World"), out = List())
   println("Mock: " ++ program.run(TerminalInterpreter.mock).runS(init).run.toString)
+
+  val program2 = join(writeLine("join1"), writeLine("join2"))
+  val init2 = Mock(List(), List())
+  println("Join: " ++ program2.run(TerminalInterpreter.mock).runS(init2).run.toString)
 
   // Real
   program.run(TerminalInterpreter.io).unsafePerformIO()

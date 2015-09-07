@@ -97,13 +97,21 @@ object TfmMacro {
         interpreter.impl.body.collect {
           // Method
           case q"${mods} def ${tname}[..${tparams}](...${paramss}): ${outer}[${inner}]" if filterMods(mods) && isInterpreterEffect(outer.asInstanceOf[Ident]) =>
-            val valNames = paramss.map(_.map { case ValDef(_, name, _, _) => name })
+            val newParamss =
+              paramss.map(_.map {
+                case q"${mods} val ${tname}: ${outer}[${inner}] = ${expr}" if isInterpreterEffect(outer.asInstanceOf[Ident]) =>
+                  (q"${mods} val ${tname}: ${algebraType}[${inner}] = ${expr}", q"${tname}.run(interpreter)")
+                case v@q"${mods} val ${tname}: ${tpt} = ${expr}" =>
+                  (v, q"${tname}")
+              })
+
+            val (args, valNames) = (newParamss.map(_.map(_._1)), newParamss.map(_.map(_._2)))
 
             q"""
-            def ${tname}[..${tparams}](...${paramss}): ${algebraType}[${inner}] =
+            def ${tname}[..${tparams}](...${args}): ${algebraType}[${inner}] =
               new ${algebraType}[${inner}] {
                 final def run[F[_]](interpreter: ${interpreterName}[F]): F[${inner}] =
-                  interpreter.${tname}[..${tparams}](...${valNames})
+                  interpreter.${tname}(...${valNames})
               }
             """
 
