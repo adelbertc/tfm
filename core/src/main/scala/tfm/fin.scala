@@ -96,7 +96,7 @@ object TfmMacro {
       val algebras =
         interpreter.impl.body.collect {
           // Method
-          case q"${mods} def ${tname}[..${tparams}](...${paramss}): ${outer}[${inner}]" if filterMods(mods) && isInterpreterEffect(outer.asInstanceOf[Ident]) =>
+          case q"${mods} def ${tname}[..${tparams}](...${paramss}): ${outer}[${inner}] = ${expr}" if filterMods(mods) && isInterpreterEffect(outer.asInstanceOf[Ident]) =>
             val newParamss =
               paramss.map(_.map {
                 case q"${mods} val ${tname}: ${outer}[${inner}] = ${expr}" if isInterpreterEffect(outer.asInstanceOf[Ident]) =>
@@ -116,7 +116,7 @@ object TfmMacro {
             """
 
           // Val
-          case q"${mods} val ${tname}: ${outer}[${inner}]" if filterMods(mods) && isInterpreterEffect(outer.asInstanceOf[Ident]) =>
+          case q"${mods} val ${tname}: ${outer}[${inner}] = ${expr}" if filterMods(mods) && isInterpreterEffect(outer.asInstanceOf[Ident]) =>
             q"""
             val ${tname}: ${algebraType}[${inner}] =
               new ${algebraType}[${inner}] {
