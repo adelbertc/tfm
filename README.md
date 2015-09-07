@@ -4,6 +4,7 @@ associated with setting up an EDSL encoded in the finally tagless approach.
 
 ### Documentation
 Currently the documentation is all in the [Scaladoc](core/src/main/scala/tfm/fin.scala).
+Examples can be found in the [examples](examples/src/main/scala/tfm/examples) sub-project.
 
 ### Limitations
 * For algebras with effectful parameters (e.g. have shape `F[_]`) the macro will replace
