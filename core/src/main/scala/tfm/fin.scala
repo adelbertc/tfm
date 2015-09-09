@@ -129,7 +129,7 @@ object TfmMacro {
       val algebrass =
         interpreter.impl.body.collect {
           // Method
-          case d@q"${mods} def ${tname}[..${tparams}](...${paramss}): ${_outer}[..${inner}] = ${_}" if filterMods(mods) && notInit(tname) =>
+          case q"${mods} def ${tname}[..${tparams}](...${paramss}): ${_outer}[..${inner}] = ${_}" if filterMods(mods) && notInit(tname) =>
             // Process params - effectful params are processed differently from pure ones
             val newParamss =
               paramss.map(_.map {
@@ -174,7 +174,7 @@ object TfmMacro {
             }
 
           // Val
-          case v@q"${mods} val ${tname}: ${_outer}[..${inner}] = ${_}" if filterMods(mods) =>
+          case q"${mods} val ${tname}: ${_outer}[..${inner}] = ${_}" if filterMods(mods) =>
             val innerDuplicate = inner.map(_.duplicate)
 
             if (isInterpreterEffect(_outer)) {
@@ -211,20 +211,20 @@ object TfmMacro {
       val (algebras, readerTrait) =
         interpreterReaderType match {
           case Some(irt) =>
-            val pas = otherAlgebras.map(_(irt))
+            val oas = otherAlgebras.map(_(irt))
             val t =
               List(q"""
               trait ${irt}[A] {
                 def run[${outer}](interpreter: ${interpreterName}[${outer.name}]): A
               }
               """)
-            (effectAlgebras ++ pas, t)
+            (effectAlgebras ++ oas, t)
           case None =>
             if (otherAlgebras.isEmpty) {
               (effectAlgebras, List())
             } else {
               val names = otherAlgebras.map(_("dummy")).map(n => s"`${n.name.decoded}`")
-              val errMsg = s"Found parameter(s) ${names.mkString(",")} with type different than the interpreter effect, but no interpreter reader name given - please provide as second annotation parameter"
+              val errMsg = s"Found parameters ${names.mkString(",")} with type different than the interpreter effect, but no interpreter reader name given - please provide as second annotation parameter"
               c.abort(c.enclosingPosition, errMsg)
             }
         }
