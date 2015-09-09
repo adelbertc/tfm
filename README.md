@@ -1,6 +1,8 @@
 # tfm
 tfm is "tagless final macro" - the project is intended to eliminate the boilerplate
-associated with setting up an EDSL encoded in the finally tagless approach.
+associated with setting up an EDSL encoded in the finally tagless approach, specifically
+the approach taken in
+[this article](https://pchiusano.github.io/2014-05-20/scala-gadts.html).
 
 ### Documentation
 Currently the documentation is all in the [Scaladoc](core/src/main/scala/tfm/fin.scala).

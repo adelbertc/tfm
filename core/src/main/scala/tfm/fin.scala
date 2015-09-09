@@ -13,8 +13,9 @@ class local extends StaticAnnotation
  *  given a name to use as the name of the generated algebra. The annottee should be the
  *  interpreter for the algebra.
  *
- *  The interpreter must be parameterized by a unary type constructor `F[_]` - this type
+ *  The interpreter must be parameterized by a type constructor `F[_]` - this type
  *  constructor represents the effect the interpreter needs during interpretation.
+ *  The type constructor may have more than one type parameter.
  *
  *  The macro will inspect and filter the public fields of the interpreter and generate
  *  the appropriate algebra type and smart constructors accordingly. When the macro
@@ -23,11 +24,12 @@ class local extends StaticAnnotation
  *
  *  - A trait with the name provided to the annotation. This trait is the user-facing
  *    type - it is the algebra that the interpreter will eventually interpret. The trait
- *    is parameterized by a (proper) type `A` which denotes the type of the value the
- *    underlying expression interprets to. The trait contains a single method `run` on it
- *    parameterized by a unary type constructor `G[_]`, and takes as input an instance of the
- *    interpreter (the annottee) with type `<interpreter type>[G]`. The output of `run`
- *    has type `G[A]`.
+ *    is parameterized by a (proper) type `A` (or more in the case of higher-arity effects)
+ *    which denotes the type of the value the underlying expression interprets to. The
+ *    trait contains a single method `run` on it parameterized by a type constructor `G`
+ *    with the same shape as the effect, and takes as input an instance of the interpreter
+ *    (the annottee) with type `<interpreter type>[G]`. The output of `run` is `G` with
+ *    applied to the type parameters of the trait.
  *  - A trait named `Language` which contains the smart constructors for the algebra trait.
  *    The smart constructors share the exact same names of the members of the algebra. The
  *    smart constructors live in a trait instead of an object to allow potential library
@@ -37,9 +39,9 @@ class local extends StaticAnnotation
  *    the smart constructors easily available via importing `language._`.
  *
  *  The algebra itself has the following restrictions:
- *  - The return type must be of the shape `F[A]`
- *  - Each input parameter must either be of type with shape `F[A]` or be of type that does
- *    not contain `F[A]`. For instance, `Int` and `[A]F[A]` are OK, but `A => F[B]` is not.
+ *  - The return type must be of the shape `F[..A]`
+ *  - Each input parameter must either be of type with shape `F[..A]` or be of type that does
+ *    not contain `F[..A]`. For instance, `Int` and `[A]F[A]` are OK, but `A => F[B]` is not.
  */
 class fin(algebraName: String) extends StaticAnnotation {
   def macroTransform(annottees: Any*): Any = macro TfmMacro.generateAlgebra
@@ -70,14 +72,14 @@ object TfmMacro {
     def verbose(s: => String): Unit =
       if (sys.props.get("tfm.verbose").isDefined) c.info(c.enclosingPosition, s, false)
 
-    // Check that `clazz` is paramterized by a unary type constructor
+    // Check that `clazz` is paramterized by a type constructor
     def wellFormed(clazz: ClassDef): Boolean =
-      clazz.tparams.headOption.filter(_.tparams.size == 1).nonEmpty
+      clazz.tparams.map(_.tparams).headOption.toList.flatten.size > 0
 
     def generate(interpreter: ClassDef, interpreterModule: Option[ModuleDef]): c.Expr[Any] = {
       // Type parameter of annottee
-      val effect = interpreter.tparams.head
-      val effectName = effect.name
+      val _effect@q"${_} type ${effectName}[..${placeholders}] = ${_}" = interpreter.tparams.head
+      val outer = _effect.duplicate
 
       // Type constructor is the same as the interpreter effect
       def isInterpreterEffect(tree: Tree): Boolean = {
@@ -115,50 +117,55 @@ object TfmMacro {
       val algebras =
         interpreter.impl.body.collect {
           // Method
-          case q"${mods} def ${tname}[..${tparams}](...${paramss}): ${outer}[${inner}] = ${expr}" if filterMods(mods) && isInterpreterEffect(outer) =>
+          case q"${mods} def ${tname}[..${tparams}](...${paramss}): ${_outer}[..${inner}] = ${_}" if filterMods(mods) && isInterpreterEffect(_outer) =>
             // Process params - effectful params are processed differently from pure ones
             val newParamss =
               paramss.map(_.map {
-                case v@q"${mods} val ${uname}: ${tpt} = ${expr}" =>
-                  tpt match {
-                    case t@tq"${outer}[..${inner}]" =>
-                      // Parameter has shape F[A], must interpret parameter before making appropriate interpreter call
-                      if (isInterpreterEffect(outer))
-                        (q"${mods} val ${uname}: ${algebraType}[..${inner}] = ${expr}", q"${uname}.run(interpreter)")
-                      // Parameter does not contain F[_], e.g. is A, List[String], Double => List[Char]
-                      else if (inner.forall(!isInterpreterEffect(_)))
-                        (v, q"${uname}")
-                      // F[_] appears in type of parameter, e.g. A => F[B]
-                      else
-                        c.abort(c.enclosingPosition, s"Parameter `${tname}: ${t}` has type containing effect '${effectName.decoded}'")
+                case q"${mods} val ${uname}: ${outer}[..${inner}] = ${expr}" =>
+                  val innerDuplicate = inner.map(_.duplicate)
+                  val exprDuplicate = expr.duplicate
+                  // Parameter has shape F[A], must interpret parameter before making appropriate interpreter call
+                  if (isInterpreterEffect(outer))
+                    (q"${mods} val ${uname}: ${algebraType}[..${innerDuplicate}] = ${exprDuplicate}", q"${uname}.run(interpreter)")
+                  // Parameter does not contain F[_], e.g. is A, List[String], Double => List[Char]
+                  else if (!inner.exists(isInterpreterEffect)) {
+                    val v = q"${mods} val ${uname}: ${outer.duplicate}[..${innerDuplicate}] = ${exprDuplicate}"
+                    (v, q"${uname}")
                   }
+                  // F[_] appears in type of parameter, e.g. A => F[B]
+                  else
+                    c.abort(c.enclosingPosition, s"Parameter `${tname}: ${outer}[${inner}]` has type containing effect '${effectName.decoded}'")
               })
 
             val (args, valNames) = (newParamss.map(_.map(_._1)), newParamss.map(_.map(_._2)))
-
+            val innerDuplicate = inner.map(_.duplicate)
             q"""
-            def ${tname}[..${tparams}](...${args}): ${algebraType}[${inner}] =
-              new ${algebraType}[${inner}] {
-                final def run[F[_]](interpreter: ${interpreterName}[F]): F[${inner}] =
+            def ${tname}[..${tparams}](...${args}): ${algebraType}[..${innerDuplicate}] =
+              new ${algebraType}[..${innerDuplicate}] {
+                final def run[${outer}](interpreter: ${interpreterName}[${outer.name}]): ${outer.name}[..${innerDuplicate}] =
                   interpreter.${tname}(...${valNames})
               }
             """
 
           // Val
-          case q"${mods} val ${tname}: ${outer}[${inner}] = ${expr}" if filterMods(mods) && isInterpreterEffect(outer) =>
+          case q"${mods} val ${tname}: ${_outer}[..${inner}] = ${_}" if filterMods(mods) && isInterpreterEffect(_outer) =>
+            val innerDuplicate = inner.map(_.duplicate)
             q"""
-            val ${tname}: ${algebraType}[${inner}] =
-              new ${algebraType}[${inner}] {
-                final def run[F[_]](interpreter: ${interpreterName}[F]): F[${inner}] =
+            val ${tname}: ${algebraType}[..${innerDuplicate}] =
+              new ${algebraType}[..${innerDuplicate}] {
+                final def run[${outer}](interpreter: ${interpreterName}[${outer.name}]): ${outer.name}[..${innerDuplicate}] =
                   interpreter.${tname}
               }
             """
         }
 
+      val inner = placeholders.map(_ => q"type ${newTypeName(c.fresh())}")
+      val innerIdent = inner.map(n => Ident(n.name))
+
       val generatedAlgebra =
         q"""
-        trait ${algebraType}[A] {
-          def run[F[_]](interpreter: ${interpreterName}[F]): F[A]
+        trait ${algebraType}[..${inner}] {
+          def run[${outer}](interpreter: ${interpreterName}[${outer.name}]): ${outer.name}[..${innerIdent}]
         }
 
         trait Language {
@@ -212,7 +219,7 @@ ${interpreter.impl.body.mkString("\n\n")}
       case (interpreter: ClassDef) :: (interpreterModule: ModuleDef) :: Nil if wellFormed(interpreter) =>
         generate(interpreter, Some(interpreterModule))
       case _ =>
-        c.abort(c.enclosingPosition, "Annotation can only be applied to traits parameterized with a unary type constructor")
+        c.abort(c.enclosingPosition, "Annotation can only be applied to types parameterized with a type constructor")
     }
   }
 }
