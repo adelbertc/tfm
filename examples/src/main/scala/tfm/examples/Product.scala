@@ -2,12 +2,13 @@ package tfm.examples
 
 import tfm.{fin, local}
 
-@fin("EncodedProduct")
+@fin("EncodedProduct", "ProductReader")
 trait ProductInterpreter[F[_, _]] {
   def pair[A, B](a: A, b: B): F[A, B]
 
-  @local def fst[A, B](pair: F[A, B]): A
-  @local def snd[A, B](pair: F[A, B]): B
+  def fst[A, B](pair: F[A, B]): A
+
+  def snd[A, B](pair: F[A, B]): B
 }
 
 object ProductInterpreter {
@@ -44,23 +45,21 @@ object ProductApp extends App {
   import ProductInterpreter._
   import ProductInterpreter.language._
 
-  val product = pair(1, 2)
+  val product = pair(1, "hello")
+  val fproduct: ProductReader[Int] = fst(product)
+  val sproduct: ProductReader[String] = snd(product)
 
-  val ce = product.run(encoded)
-  val cea = encoded.fst(ce)
-  val ceb = encoded.snd(ce)
+  val cea = fproduct.run(encoded)
+  val ceb = sproduct.run(encoded)
 
-  val t = product.run(tuple)
-  val ta = tuple.fst(t)
-  val tb = tuple.snd(t)
+  val ta = fproduct.run(tuple)
+  val tb = sproduct.run(tuple)
 
   val s =
     s"""
-    ce = ${ce}
     cea = ${cea}
     ceb = ${ceb}
-    
-    t = ${t}
+
     ta = ${ta}
     tb = ${tb}
     """

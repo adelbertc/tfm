@@ -29,7 +29,12 @@ class local extends StaticAnnotation
  *    trait contains a single method `run` on it parameterized by a type constructor `G`
  *    with the same shape as the effect, and takes as input an instance of the interpreter
  *    (the annottee) with type `<interpreter type>[G]`. The output of `run` is `G` with
- *    applied to the type parameters of the trait.
+ *    applied to the type parameters of the trait. This trait is used for fields that have
+ *    a (return) type where the outermost type constructor is the effect.
+ *  - A trait with the name of the interpreter ++ "Reader." This trait is very similar to
+ *    the algebra trait, but instead of `run` returning `G[A]`, it returns just `A`. This
+ *    trait is used for fields that do not have a (return) type where the outermost type
+ *    constructor is the effect.
  *  - A trait named `Language` which contains the smart constructors for the algebra trait.
  *    The smart constructors share the exact same names of the members of the algebra. The
  *    smart constructors live in a trait instead of an object to allow potential library
@@ -39,7 +44,6 @@ class local extends StaticAnnotation
  *    the smart constructors easily available via importing `language._`.
  *
  *  The algebra itself has the following restrictions:
- *  - The return type must be of the shape `F[..A]`
  *  - Each input parameter must either be of type with shape `F[..A]` or be of type that does
  *    not contain `F[..A]`. For instance, `Int` and `[A]F[A]` are OK, but `A => F[B]` is not.
  */
@@ -59,6 +63,8 @@ object TfmMacro {
       val blacklist = List(Flag.PRIVATE, Flag.PROTECTED)
       blacklist.forall(flag => !mods.hasFlag(flag))
     }
+
+    def notInit(name: TermName): Boolean = name.decoded != "$init$"
 
     // Field does not contain the `local` annotation
     def notOmitted(mods: Modifiers): Boolean =
@@ -98,26 +104,32 @@ object TfmMacro {
       val decodedInterpreterName = interpreterName.decoded
 
       // Get first argument of annotation to use as name of algebra
-      val (algebraType, algebraTerm) =
+      val (algebraType, algebraTerm, interpreterReaderType) =
         c.prefix.tree match {
           case Apply(_, args) =>
-            args.headOption match {
-              case Some(name) =>
-                val algebraString = c.eval(c.Expr[String](name))
+            args match {
+              case algebraName :: rest =>
+                val algebraString = c.eval(c.Expr[String](algebraName))
+                // val readerString = c.eval(c.Expr[String](readerName))
+                val readerType =
+                  rest.headOption.
+                    map(n => c.eval(c.Expr[String](n))).
+                    filter(rn => (rn != decodedInterpreterName) && (rn.nonEmpty)).
+                    map(rn => newTypeName(rn))
 
                 if (algebraString == decodedInterpreterName)
-                  c.abort(c.enclosingPosition, s"Algebra name cannot be same as that of the interpreter: ${decodedInterpreterName}")
+                  c.abort(c.enclosingPosition, s"Algebra names cannot be same as that of the interpreter: ${decodedInterpreterName}")
                 else if (algebraString.isEmpty)
-                  c.abort(c.enclosingPosition, "Algebra name cannot be empty string")
-                else (newTypeName(algebraString), newTermName(algebraString))
-              case None => c.abort(c.enclosingPosition, "Annotation requires algebra name as argument")
+                  c.abort(c.enclosingPosition, "Algebra names cannot be empty string")
+                else (newTypeName(algebraString), newTermName(algebraString), readerType)
+              case _ => c.abort(c.enclosingPosition, "Annotation requires algebra name as argument")
             }
         }
 
-      val algebras =
+      val algebrass =
         interpreter.impl.body.collect {
           // Method
-          case q"${mods} def ${tname}[..${tparams}](...${paramss}): ${_outer}[..${inner}] = ${_}" if filterMods(mods) && isInterpreterEffect(_outer) =>
+          case d@q"${mods} def ${tname}[..${tparams}](...${paramss}): ${_outer}[..${inner}] = ${_}" if filterMods(mods) && notInit(tname) =>
             // Process params - effectful params are processed differently from pure ones
             val newParamss =
               paramss.map(_.map {
@@ -134,39 +146,96 @@ object TfmMacro {
                   }
                   // F[_] appears in type of parameter, e.g. A => F[B]
                   else
-                    c.abort(c.enclosingPosition, s"Parameter `${tname}: ${outer}[${inner}]` has type containing effect '${effectName.decoded}'")
+                    c.abort(c.enclosingPosition, s"Parameter `${tname}: ${outer}[.. ${inner}]` has type containing effect '${effectName.decoded}'")
               })
 
             val (args, valNames) = (newParamss.map(_.map(_._1)), newParamss.map(_.map(_._2)))
             val innerDuplicate = inner.map(_.duplicate)
-            q"""
-            def ${tname}[..${tparams}](...${args}): ${algebraType}[..${innerDuplicate}] =
-              new ${algebraType}[..${innerDuplicate}] {
-                final def run[${outer}](interpreter: ${interpreterName}[${outer.name}]): ${outer.name}[..${innerDuplicate}] =
-                  interpreter.${tname}(...${valNames})
-              }
-            """
+
+            if (isInterpreterEffect(_outer)) {
+              Left(q"""
+              def ${tname}[..${tparams}](...${args}): ${algebraType}[..${innerDuplicate}] =
+                new ${algebraType}[..${innerDuplicate}] {
+                  final def run[${outer}](interpreter: ${interpreterName}[${outer.name}]): ${outer.name}[..${innerDuplicate}] =
+                    interpreter.${tname}(...${valNames})
+                }
+              """)
+            } else {
+              Right((interpreterReaderType: TypeName) => {
+                val r = q"${_outer}[..${innerDuplicate}]"
+                q"""
+                def ${tname}[..${tparams}](...${args}): ${interpreterReaderType}[${r}] =
+                  new ${interpreterReaderType}[${r}] {
+                    final def run[${outer}](interpreter: ${interpreterName}[${outer.name}]): ${r} =
+                      interpreter.${tname}(...${valNames})
+                  }
+                """
+              })
+            }
 
           // Val
-          case q"${mods} val ${tname}: ${_outer}[..${inner}] = ${_}" if filterMods(mods) && isInterpreterEffect(_outer) =>
+          case v@q"${mods} val ${tname}: ${_outer}[..${inner}] = ${_}" if filterMods(mods) =>
             val innerDuplicate = inner.map(_.duplicate)
-            q"""
-            val ${tname}: ${algebraType}[..${innerDuplicate}] =
-              new ${algebraType}[..${innerDuplicate}] {
-                final def run[${outer}](interpreter: ${interpreterName}[${outer.name}]): ${outer.name}[..${innerDuplicate}] =
-                  interpreter.${tname}
-              }
-            """
+
+            if (isInterpreterEffect(_outer)) {
+              Left(q"""
+              val ${tname}: ${algebraType}[..${innerDuplicate}] =
+                new ${algebraType}[..${innerDuplicate}] {
+                  final def run[${outer}](interpreter: ${interpreterName}[${outer.name}]): ${outer.name}[..${innerDuplicate}] =
+                    interpreter.${tname}
+                }
+              """)
+            } else {
+              val t = q"${tname}: ${_outer}[..${inner}]"
+              Right((interpreterReaderType: TypeName) => {
+                val r = q"${_outer}[..${innerDuplicate}]"
+                q"""
+                val ${tname}: ${interpreterReaderType}[${r}] =
+                  new ${interpreterReaderType}[${r}] {
+                    final def run[${outer}](interpreter: ${interpreterName}[${outer.name}]): ${r} =
+                      interpreter.${tname}
+                  }
+                """
+              })
+            }
         }
 
       val inner = placeholders.map(_ => q"type ${newTypeName(c.fresh())}")
       val innerIdent = inner.map(n => Ident(n.name))
+
+      val (effectAlgebras, otherAlgebras) =
+        algebrass.foldLeft((List.empty[ValOrDefDef], List.empty[TypeName => ValOrDefDef])) {
+          case ((ds, vs), e) => e.fold(d => (d :: ds, vs), v => (ds, v :: vs))
+        }
+
+      val (algebras, readerTrait) =
+        interpreterReaderType match {
+          case Some(irt) =>
+            val pas = otherAlgebras.map(_(irt))
+            val t =
+              List(q"""
+              trait ${irt}[A] {
+                def run[${outer}](interpreter: ${interpreterName}[${outer.name}]): A
+              }
+              """)
+            (effectAlgebras ++ pas, t)
+          case None =>
+            if (otherAlgebras.isEmpty) {
+              (effectAlgebras, List())
+            } else {
+              val names = otherAlgebras.map(_("dummy")).map(n => s"`${n.name.decoded}`")
+              val errMsg = s"Found parameter(s) ${names.mkString(",")} with type different than the interpreter effect, but no interpreter reader name given - please provide as second annotation parameter"
+              c.abort(c.enclosingPosition, errMsg)
+            }
+        }
 
       val generatedAlgebra =
         q"""
         trait ${algebraType}[..${inner}] {
           def run[${outer}](interpreter: ${interpreterName}[${outer.name}]): ${outer.name}[..${innerIdent}]
         }
+
+        ..${readerTrait}
 
         trait Language {
           ..${algebras}

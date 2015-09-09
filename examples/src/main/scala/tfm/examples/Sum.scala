@@ -4,13 +4,13 @@ import cats.data.Xor
 
 import tfm.{fin, local}
 
-@fin("EncodedSum")
+@fin("EncodedSum", "SumReader")
 trait SumInterpreter[F[+_, +_]] {
   def left[A, B](a: A): F[A, B]
 
   def right[A, B](b: B): F[A, B]
 
-  @local def fold[A, B, X](sum: F[A, B])(l: A => X, r: B => X): X
+  def fold[A, B, X](sum: F[A, B])(l: A => X, r: B => X): X
 }
 
 object SumInterpreter {
@@ -52,19 +52,17 @@ object SumApp extends App {
   import SumInterpreter._
   import SumInterpreter.language._
 
-  def exampleFold[F[+_, +_]](interpreter: SumInterpreter[F], sum: EncodedSum[List[Int], String]): Int = {
-    val repr = sum.run(interpreter)
-    interpreter.fold(repr)(_.sum, _.size)
-  }
+  def exampleFold[F[+_, +_]](sum: EncodedSum[List[Int], String]): SumReader[Int] =
+    fold(sum)(_.sum, _.size)
 
   val l = left[List[Int], String](List(1, 2, 3))
   val r = right[List[Int], String]("hello")
 
-  val lei = exampleFold(encoded, l)
-  val rei = exampleFold(encoded, r)
+  val lei = exampleFold(l).run(encoded)
+  val rei = exampleFold(r).run(encoded)
 
-  val lxi = exampleFold(xor, l)
-  val rxi = exampleFold(xor, r)
+  val lxi = exampleFold(l).run(xor)
+  val rxi = exampleFold(r).run(xor)
 
   val s =
     s"""
@@ -72,9 +70,9 @@ object SumApp extends App {
     ${r.run(encoded)}
     lei = ${lei}
     rei = ${rei}
-   
-    ${l.run(xor)} 
-    ${r.run(xor)} 
+
+    ${l.run(xor)}
+    ${r.run(xor)}
     lxi = ${lxi}
     rxi = ${rxi}
     """
