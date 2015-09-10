@@ -4,7 +4,7 @@ import cats.data.Xor
 
 import tfm.{fin, local}
 
-@fin("EncodedSum", "SumReader")
+@fin(algebraName = "EncodedSum", auxAlgebraName = "SumReader")
 trait SumInterpreter[F[+_, +_]] {
   def left[A, B](a: A): F[A, B]
 

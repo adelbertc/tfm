@@ -5,7 +5,7 @@ import cats.implicits._
 
 import tfm.fin
 
-@fin("EncodedList")
+@fin(algebraName = "EncodedList")
 trait ListInterpreter[F[_]] {
   def nil[A]: F[A]
   def cons[A](head: A, tail: F[A]): F[A]

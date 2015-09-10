@@ -18,12 +18,12 @@ class local extends StaticAnnotation
  *  The type constructor may have more than one type parameter.
  *
  *  The macro will inspect and filter the public fields of the interpreter and generate
- *  the appropriate algebra type and smart constructors accordingly. When the macro
+ *  the appropriate algebra types and smart constructors accordingly. When the macro
  *  is invoked, the following is generated and placed in the companion object of
  *  the annottee:
  *
- *  - A trait with the name provided to the annotation. This trait is the user-facing
- *    type - it is the algebra that the interpreter will eventually interpret. The trait
+ *  - A trait with the `algebraName`/first name provided to the annotation. This trait
+ *    contains the effectful algebra that the interpreter will eventually interpret. The trait
  *    is parameterized by a (proper) type `A` (or more in the case of higher-arity effects)
  *    which denotes the type of the value the underlying expression interprets to. The
  *    trait contains a single method `run` on it parameterized by a type constructor `G`
@@ -31,10 +31,10 @@ class local extends StaticAnnotation
  *    (the annottee) with type `<interpreter type>[G]`. The output of `run` is `G` with
  *    applied to the type parameters of the trait. This trait is used for fields that have
  *    a (return) type where the outermost type constructor is the effect.
- *  - A trait with the name of the interpreter ++ "Reader." This trait is very similar to
- *    the algebra trait, but instead of `run` returning `G[A]`, it returns just `A`. This
- *    trait is used for fields that do not have a (return) type where the outermost type
- *    constructor is the effect.
+ *  - A trait with the `auxAlgebraName`/second name provided to the annotation. This trait
+ *    is very similar to the algebra trait, but instead of `run` returning `G[A]`, it returns
+ *    just `A`. This trait is used for fields that do not have a (return) type where the
+ *    outermost type constructor is the effect.
  *  - A trait named `Language` which contains the smart constructors for the algebra trait.
  *    The smart constructors share the exact same names of the members of the algebra. The
  *    smart constructors live in a trait instead of an object to allow potential library
@@ -47,11 +47,14 @@ class local extends StaticAnnotation
  *  - Each input parameter must either be of type with shape `F[..A]` or be of type that does
  *    not contain `F[..A]`. For instance, `Int` and `[A]F[A]` are OK, but `A => F[B]` is not.
  */
-class fin(algebraName: String) extends StaticAnnotation {
+class fin(algebraName: String, auxAlgebraName: String) extends StaticAnnotation {
   def macroTransform(annottees: Any*): Any = macro TfmMacro.generateAlgebra
 }
 
 object TfmMacro {
+  private val algebraName = "algebraName"
+  private val auxAlgebraName = "auxAlgebraName"
+
   def generateAlgebra(c: Context)(annottees: c.Expr[Any]*): c.Expr[Any] = {
     import c.universe._
 
@@ -107,23 +110,35 @@ object TfmMacro {
       val (algebraType, algebraTerm, interpreterReaderType) =
         c.prefix.tree match {
           case Apply(_, args) =>
-            args match {
-              case algebraName :: rest =>
-                val algebraString = c.eval(c.Expr[String](algebraName))
-                // val readerString = c.eval(c.Expr[String](readerName))
-                val readerType =
-                  rest.headOption.
-                    map(n => c.eval(c.Expr[String](n))).
-                    filter(rn => (rn != decodedInterpreterName) && (rn.nonEmpty)).
-                    map(rn => newTypeName(rn))
+            val algebraString =
+              args.
+                collectFirst { case q"${name} = ${an}" if name.asInstanceOf[Ident].name.decoded == algebraName => an }.
+                orElse(args.headOption).
+                map(an => c.eval(c.Expr[String](an))).
+                getOrElse(c.abort(c.enclosingPosition, s"Unspecified `${algebraName}` name to annotation (first parameter)"))
 
-                if (algebraString == decodedInterpreterName)
-                  c.abort(c.enclosingPosition, s"Algebra names cannot be same as that of the interpreter: ${decodedInterpreterName}")
-                else if (algebraString.isEmpty)
-                  c.abort(c.enclosingPosition, "Algebra names cannot be empty string")
-                else (newTypeName(algebraString), newTermName(algebraString), readerType)
-              case _ => c.abort(c.enclosingPosition, "Annotation requires algebra name as argument")
-            }
+            val readerType =
+              args.
+                collectFirst { case q"${name} = ${an}" if name.asInstanceOf[Ident].name.decoded == auxAlgebraName => an }.
+                orElse(scala.util.Try(args(1)).toOption).
+                map(an => c.eval(c.Expr[String](an))).
+                map { an =>
+                  if (an == decodedInterpreterName)
+                    c.abort(c.enclosingPosition, "Alternative algebra name cannot be same as that of the interpreter: ${decodedInterpreterName}")
+                  else if (an.isEmpty)
+                    c.abort(c.enclosingPosition, "Alternative algebra name cannot be empty string")
+                  else if (an == algebraString)
+                    c.abort(c.enclosingPosition, "Algebras cannot share names")
+                  else an
+                }.
+                filter(rn => (rn != decodedInterpreterName) && (rn.nonEmpty)).
+                map(rn => newTypeName(rn))
+
+            if (algebraString == decodedInterpreterName)
+              c.abort(c.enclosingPosition, s"Algebra name cannot be same as that of the interpreter: ${decodedInterpreterName}")
+            else if (algebraString.isEmpty)
+              c.abort(c.enclosingPosition, "Algebra name cannot be empty string")
+            else (newTypeName(algebraString), newTermName(algebraString), readerType)
         }
 
       val algebrass =
@@ -224,7 +239,7 @@ object TfmMacro {
               (effectAlgebras, List())
             } else {
               val names = otherAlgebras.map(_("dummy")).map(n => s"`${n.name.decoded}`")
-              val errMsg = s"Found parameters ${names.mkString(",")} with type different than the interpreter effect, but no interpreter reader name given - please provide as second annotation parameter"
+              val errMsg = s"Found parameters ${names.mkString(",")} with type different than the interpreter effect, but no interpreter reader name given - please provide as parameter `otherAlgebraName` (second parameter)"
               c.abort(c.enclosingPosition, errMsg)
             }
         }
