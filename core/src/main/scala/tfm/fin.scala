@@ -1,7 +1,9 @@
 package tfm
 
+import macrocompat.bundle
+
 import scala.annotation.StaticAnnotation
-import scala.reflect.macros.Context
+import scala.reflect.macros.whitebox.Context
 
 /** Annotation used to mark a field that should not be treated as part of the algebra.
  *
@@ -47,17 +49,18 @@ class local extends StaticAnnotation
  *  - Each input parameter must either be of type with shape `F[..A]` or be of type that does
  *    not contain `F[..A]`. For instance, `Int` and `[A]F[A]` are OK, but `A => F[B]` is not.
  */
-class fin(algebraName: String, auxAlgebraName: String) extends StaticAnnotation {
+class fin(algebraName: String, auxAlgebraName: String = "") extends StaticAnnotation {
   def macroTransform(annottees: Any*): Any = macro TfmMacro.generateAlgebra
 }
 
-object TfmMacro {
+@bundle
+class TfmMacro(val c: Context) {
+  import c.universe._
+
   private val algebraName = "algebraName"
   private val auxAlgebraName = "auxAlgebraName"
 
-  def generateAlgebra(c: Context)(annottees: c.Expr[Any]*): c.Expr[Any] = {
-    import c.universe._
-
+  def generateAlgebra(annottees: c.Expr[Any]*): c.Expr[Any] = {
     // A predicate used to test if a field could be part of the algebra
     def filterMods(mods: Modifiers): Boolean =
       isPublic(mods) && notOmitted(mods)
@@ -67,7 +70,7 @@ object TfmMacro {
       blacklist.forall(flag => !mods.hasFlag(flag))
     }
 
-    def notInit(name: TermName): Boolean = name.decoded != "$init$"
+    def notInit(name: TermName): Boolean = name.toString != "$init$"
 
     // Field does not contain the `local` annotation
     def notOmitted(mods: Modifiers): Boolean =
@@ -104,7 +107,7 @@ object TfmMacro {
       }
 
       val interpreterName = interpreter.name
-      val decodedInterpreterName = interpreterName.decoded
+      val decodedInterpreterName = interpreterName.toString
 
       // Get first argument of annotation to use as name of algebra
       val (algebraType, algebraTerm, interpreterReaderType) =
@@ -112,19 +115,19 @@ object TfmMacro {
           case Apply(_, args) =>
             val algebraString =
               args.
-                collectFirst { case q"${name} = ${an}" if name.asInstanceOf[Ident].name.decoded == algebraName => an }.
+                collectFirst { case q"${name} = ${an}" if name.asInstanceOf[Ident].name.toString == algebraName => an }.
                 orElse(args.headOption).
                 map(an => c.eval(c.Expr[String](an))).
                 getOrElse(c.abort(c.enclosingPosition, s"Unspecified `${algebraName}` name to annotation (first parameter)"))
 
             val readerType =
               args.
-                collectFirst { case q"${name} = ${an}" if name.asInstanceOf[Ident].name.decoded == auxAlgebraName => an }.
+                collectFirst { case q"${name} = ${an}" if name.asInstanceOf[Ident].name.toString == auxAlgebraName => an }.
                 orElse(scala.util.Try(args(1)).toOption).
                 map(an => c.eval(c.Expr[String](an))).
                 map { an =>
                   if (an == decodedInterpreterName)
-                    c.abort(c.enclosingPosition, "Alternative algebra name cannot be same as that of the interpreter: ${decodedInterpreterName}")
+                    c.abort(c.enclosingPosition, s"Alternative algebra name cannot be same as that of the interpreter: ${decodedInterpreterName}")
                   else if (an.isEmpty)
                     c.abort(c.enclosingPosition, "Alternative algebra name cannot be empty string")
                   else if (an == algebraString)
@@ -132,13 +135,13 @@ object TfmMacro {
                   else an
                 }.
                 filter(rn => (rn != decodedInterpreterName) && (rn.nonEmpty)).
-                map(rn => newTypeName(rn))
+                map(rn => TypeName(rn))
 
             if (algebraString == decodedInterpreterName)
               c.abort(c.enclosingPosition, s"Algebra name cannot be same as that of the interpreter: ${decodedInterpreterName}")
             else if (algebraString.isEmpty)
               c.abort(c.enclosingPosition, "Algebra name cannot be empty string")
-            else (newTypeName(algebraString), newTermName(algebraString), readerType)
+            else (TypeName(algebraString), TermName(algebraString), readerType)
         }
 
       val algebrass =
@@ -161,7 +164,7 @@ object TfmMacro {
                   }
                   // F[_] appears in type of parameter, e.g. A => F[B]
                   else
-                    c.abort(c.enclosingPosition, s"Parameter `${tname}: ${outer}[.. ${inner}]` has type containing effect '${effectName.decoded}'")
+                    c.abort(c.enclosingPosition, s"Parameter `${tname}: ${outer}[.. ${inner}]` has type containing effect '${effectName.toString}'")
               })
 
             val (args, valNames) = (newParamss.map(_.map(_._1)), newParamss.map(_.map(_._2)))
@@ -215,7 +218,7 @@ object TfmMacro {
             }
         }
 
-      val inner = placeholders.map(_ => q"type ${newTypeName(c.fresh())}")
+      val inner = placeholders.map(_ => q"type ${TypeName(c.freshName)}")
       val innerIdent = inner.map(n => Ident(n.name))
 
       val (effectAlgebras, otherAlgebras) =
@@ -238,7 +241,7 @@ object TfmMacro {
             if (otherAlgebras.isEmpty) {
               (effectAlgebras, List())
             } else {
-              val names = otherAlgebras.map(_("dummy")).map(n => s"`${n.name.decoded}`")
+              val names = otherAlgebras.map(_(TypeName("dummy"))).map(n => s"`${n.name.toString}`")
               val errMsg = s"Found parameters ${names.mkString(",")} with type different than the interpreter effect, but no interpreter reader name given - please provide as parameter `otherAlgebraName` (second parameter)"
               c.abort(c.enclosingPosition, errMsg)
             }

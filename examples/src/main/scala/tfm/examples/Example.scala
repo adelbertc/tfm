@@ -2,7 +2,7 @@ package tfm.examples
 
 import tfm.{fin, local}
 
-@fin("MyAlgebra")
+@fin(algebraName = "MyAlgebra")
 trait ExampleInterpreter[F[_]] {
   @local def map2[A, B, C](fa: F[A], fb: F[B])(f: (A, B) => C): F[C]
 

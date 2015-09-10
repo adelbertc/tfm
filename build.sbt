@@ -1,7 +1,8 @@
 lazy val buildSettings = List(
   organization := "com.adelbertc",
   licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
-  scalaVersion := "2.10.5",
+  scalaVersion := "2.11.7",
+  crossScalaVersions := List("2.10.5", scalaVersion.value),
   version := "0.1.0-SNAPSHOT"
 )
 
@@ -23,7 +24,7 @@ lazy val commonSettings = List(
     "-Ywarn-value-discard"
   ),
   libraryDependencies +=
-    compilerPlugin("org.scalamacros"  % ("paradise_" ++ scalaVersion.value) % scalamacrosVersion),
+    compilerPlugin("org.scalamacros"  % "paradise" % "2.0.1" cross CrossVersion.full),
   initialize := { System.setProperty("tfm.verbose", "") }
 )
 
@@ -34,8 +35,6 @@ lazy val tfm =
   settings(tfmSettings).
   aggregate(core, examples)
 
-val scalamacrosVersion = "2.0.1"
-
 lazy val core =
   project.in(file("core")).
   settings(name := "tfm").
@@ -43,8 +42,8 @@ lazy val core =
   settings(tfmSettings).
   settings(
     libraryDependencies ++= List(
-      "org.scalamacros" %% "quasiquotes"   % scalamacrosVersion,
-      "org.scala-lang"  %  "scala-reflect" % scalaVersion.value
+      "org.typelevel"   %% "macro-compat"   % "1.0.0",
+      "org.scala-lang"  %  "scala-reflect"  % scalaVersion.value
     )
   )
 

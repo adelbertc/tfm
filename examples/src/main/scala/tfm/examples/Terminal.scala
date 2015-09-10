@@ -23,8 +23,10 @@ trait TerminalInterpreter[F[_]] {
 object TerminalInterpreter {
   val io: TerminalInterpreter[IO] =
     new TerminalInterpreter[IO] {
+      val console = System.console()
+
       val F: FlatMap[IO] = FlatMap[IO]
-      val readLine: IO[String] = IO { Console.readLine() }
+      val readLine: IO[String] = IO { console.readLine() }
       def writeLine(string: String): IO[Unit] = IO { println(string) }
     }
 
