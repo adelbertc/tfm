@@ -70,7 +70,7 @@ class TfmMacro(val c: Context) {
       blacklist.forall(flag => !mods.hasFlag(flag))
     }
 
-    def notInit(name: TermName): Boolean = name.toString != "$init$"
+    def notInit(name: TermName): Boolean = name.decodedName.toString != "$init$"
 
     // Field does not contain the `local` annotation
     def notOmitted(mods: Modifiers): Boolean =
@@ -98,8 +98,8 @@ class TfmMacro(val c: Context) {
         tree match {
           case tq"${outer}[..${inner}]" =>
             outer match {
-              case i: Ident if i.name == effectName => true
-              case s: Select if s.name == effectName => true
+              case i: Ident if i.name.decodedName.toString == effectName.decodedName.toString => true
+              case s: Select if s.name.decodedName.toString == effectName.decodedName.toString => true
               case _ => inner.exists(isInterpreterEffect)
             }
           case _ => false
@@ -107,7 +107,7 @@ class TfmMacro(val c: Context) {
       }
 
       val interpreterName = interpreter.name
-      val decodedInterpreterName = interpreterName.toString
+      val decodedInterpreterName = interpreterName.decodedName.toString
 
       // Get first argument of annotation to use as name of algebra
       val (algebraType, algebraTerm, interpreterReaderType) =
@@ -115,14 +115,14 @@ class TfmMacro(val c: Context) {
           case Apply(_, args) =>
             val algebraString =
               args.
-                collectFirst { case q"${name} = ${an}" if name.asInstanceOf[Ident].name.toString == algebraName => an }.
+                collectFirst { case q"${name} = ${an}" if name.asInstanceOf[Ident].name.decodedName.toString == algebraName => an }.
                 orElse(args.headOption).
                 map(an => c.eval(c.Expr[String](an))).
                 getOrElse(c.abort(c.enclosingPosition, s"Unspecified `${algebraName}` name to annotation (first parameter)"))
 
             val readerType =
               args.
-                collectFirst { case q"${name} = ${an}" if name.asInstanceOf[Ident].name.toString == auxAlgebraName => an }.
+                collectFirst { case q"${name} = ${an}" if name.asInstanceOf[Ident].name.decodedName.toString == auxAlgebraName => an }.
                 orElse(scala.util.Try(args(1)).toOption).
                 map(an => c.eval(c.Expr[String](an))).
                 map { an =>
@@ -164,7 +164,7 @@ class TfmMacro(val c: Context) {
                   }
                   // F[_] appears in type of parameter, e.g. A => F[B]
                   else
-                    c.abort(c.enclosingPosition, s"Parameter `${tname}: ${outer}[.. ${inner}]` has type containing effect '${effectName.toString}'")
+                    c.abort(c.enclosingPosition, s"Parameter `${tname}: ${outer}[.. ${inner}]` has type containing effect '${effectName.decodedName.toString}'")
               })
 
             val (args, valNames) = (newParamss.map(_.map(_._1)), newParamss.map(_.map(_._2)))
