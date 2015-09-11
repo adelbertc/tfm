@@ -70,7 +70,10 @@ class TfmMacro(val c: Context) {
       blacklist.forall(flag => !mods.hasFlag(flag))
     }
 
-    def notInit(name: TermName): Boolean = name.decodedName.toString != "$init$"
+    def notInit(name: TermName): Boolean = {
+      val decoded = name.decodedName.toString
+      (decoded != "$init$") && (decoded != "<init>")
+    }
 
     // Field does not contain the `local` annotation
     def notOmitted(mods: Modifiers): Boolean =
@@ -242,7 +245,7 @@ class TfmMacro(val c: Context) {
               (effectAlgebras, List())
             } else {
               val names = otherAlgebras.map(_(TypeName("dummy"))).map(n => s"`${n.name.toString}`")
-              val errMsg = s"Found parameters ${names.mkString(",")} with type different than the interpreter effect, but no interpreter reader name given - please provide as parameter `otherAlgebraName` (second parameter)"
+              val errMsg = s"Found parameters ${names.mkString(",")} with type different than the interpreter effect, but no interpreter reader name given - please provide as parameter `${auxAlgebraName}` (second parameter)"
               c.abort(c.enclosingPosition, errMsg)
             }
         }
