@@ -137,7 +137,6 @@ class TfmMacro(val c: Context) {
                     c.abort(c.enclosingPosition, "Algebras cannot share names")
                   else an
                 }.
-                filter(rn => (rn != decodedInterpreterName) && (rn.nonEmpty)).
                 map(rn => TypeName(rn))
 
             if (algebraString == decodedInterpreterName)
@@ -173,9 +172,10 @@ class TfmMacro(val c: Context) {
             val (args, valNames) = (newParamss.map(_.map(_._1)), newParamss.map(_.map(_._2)))
             val innerDuplicate = inner.map(_.duplicate)
 
+            val tparamsDup = tparams.map(_.duplicate)
             if (isInterpreterEffect(_outer)) {
               Left(q"""
-              def ${tname}[..${tparams}](...${args}): ${algebraType}[..${innerDuplicate}] =
+              def ${tname}[..${tparamsDup}](...${args}): ${algebraType}[..${innerDuplicate}] =
                 new ${algebraType}[..${innerDuplicate}] {
                   final def run[${outer}](interpreter: ${interpreterName}[${outer.name}]): ${outer.name}[..${innerDuplicate}] =
                     interpreter.${tname}(...${valNames})
@@ -183,9 +183,9 @@ class TfmMacro(val c: Context) {
               """)
             } else {
               Right((interpreterReaderType: TypeName) => {
-                val r = q"${_outer}[..${innerDuplicate}]"
+                val r = q"${_outer.duplicate}[..${innerDuplicate}]"
                 q"""
-                def ${tname}[..${tparams}](...${args}): ${interpreterReaderType}[${r}] =
+                def ${tname}[..${tparamsDup}](...${args}): ${interpreterReaderType}[${r}] =
                   new ${interpreterReaderType}[${r}] {
                     final def run[${outer}](interpreter: ${interpreterName}[${outer.name}]): ${r} =
                       interpreter.${tname}(...${valNames})
@@ -209,7 +209,7 @@ class TfmMacro(val c: Context) {
             } else {
               val t = q"${tname}: ${_outer}[..${inner}]"
               Right((interpreterReaderType: TypeName) => {
-                val r = q"${_outer}[..${innerDuplicate}]"
+                val r = q"${_outer.duplicate}[..${innerDuplicate}]"
                 q"""
                 val ${tname}: ${interpreterReaderType}[${r}] =
                   new ${interpreterReaderType}[${r}] {
@@ -269,9 +269,10 @@ class TfmMacro(val c: Context) {
         interpreterModule match {
           // Existing companion object, extended with the generated algebra
           case Some(q"${mods} object ${tname} extends { ..${earlydefns} } with ..${parents} { ${self} => ..${body} }") =>
+            val bodyDuplicate = body.map(_.duplicate)
             q"""${mods} object ${tname} extends { ..${earlydefns} } with ..${parents} { ${self} =>
               ..${generatedAlgebra}
-              ..${body}
+              ..${bodyDuplicate}
             }
             """
 
@@ -297,7 +298,7 @@ ${interpreter.impl.body.mkString("\n\n")}
       }
 
       c.Expr(q"""
-      ${interpreter}
+      ${interpreter.duplicate}
 
       ${interpreterCompanion}
       """)

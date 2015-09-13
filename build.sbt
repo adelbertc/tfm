@@ -19,10 +19,12 @@ lazy val commonSettings = List(
     "-Xfatal-warnings",
     "-Xlint",
     "-Yno-adapted-args",
+    "-Yrangepos",
     "-Ywarn-dead-code",
     "-Ywarn-numeric-widen",
     "-Ywarn-value-discard"
   ),
+  resolvers += Resolver.sonatypeRepo("snapshots"),
   libraryDependencies +=
     compilerPlugin("org.scalamacros"  % "paradise" % "2.0.1" cross CrossVersion.full),
   initialize := { System.setProperty("tfm.verbose", "") }
@@ -42,7 +44,7 @@ lazy val core =
   settings(tfmSettings).
   settings(
     libraryDependencies ++= List(
-      "org.typelevel"   %% "macro-compat"   % "1.0.0",
+      "org.typelevel"   %% "macro-compat"   % "1.0.1-SNAPSHOT",
       "org.scala-lang"  %  "scala-reflect"  % scalaVersion.value,
       "org.specs2"      %% "specs2-core"    % "3.6.4"             % "test"
     )
