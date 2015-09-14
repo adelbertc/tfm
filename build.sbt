@@ -44,7 +44,7 @@ lazy val core =
   settings(tfmSettings).
   settings(
     libraryDependencies ++= List(
-      "org.typelevel"   %% "macro-compat"   % "1.0.1-SNAPSHOT",
+      "org.typelevel"   %% "macro-compat"   % "1.0.1",
       "org.scala-lang"  %  "scala-reflect"  % scalaVersion.value,
       "org.specs2"      %% "specs2-core"    % "3.6.4"             % "test"
     )
